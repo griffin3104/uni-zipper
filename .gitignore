@@ -1,0 +1,19 @@
+# Rust
+target/
+
+# Node
+node_modules/
+dist/
+
+# OS
+.DS_Store
+
+# プロトタイプの出力
+prototypes/*/out/
+
+# Vite
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*

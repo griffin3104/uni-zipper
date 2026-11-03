@@ -1,0 +1,9 @@
+[package]
+name = "sjis-zip-writer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+encoding_rs = "0.8.44"
+unicode-normalization = "0.1.26"
+zip = "9.3.0"

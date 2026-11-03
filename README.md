@@ -40,4 +40,24 @@ WindowsとMacOSでZipファイルをやり取りする場合、文字化けを�
 ## 使用技術
 Tauriを使用して作成。
 
+## 開発
 
+### 必要なもの
+- Node.js(v24で動作確認)
+- Rust(`rustup` で導入。`cargo` / `rustc`)
+- macOS: Xcode Command Line Tools
+- Windows: MSVCビルドツール、WebView2
+
+### コマンド
+```
+npm install          # 依存パッケージの導入
+npm run tauri dev    # 開発起動
+npm run check        # フロントエンドの型チェック
+npm run tauri build  # 配布用ビルド(実行したOS向け)
+```
+
+### ディレクトリ構成
+- `src/` フロントエンド(Svelte + TypeScript、ビルドはVite。SvelteKitは使わない)
+- `src-tauri/` バックエンド(Rust)
+- `docs/` 設計書(機能要件・画面仕様・技術設計)
+- `prototypes/` 技術検証用のプロトタイプ(本体のビルドとは無関係)
