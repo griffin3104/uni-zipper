@@ -5,13 +5,12 @@
 //! - 同名の扱い(上書き / 自動連番リネーム)に対応する。
 //! - 不要になったら削除する(`Drop`でも削除する)。起動時に古い残骸を掃除できる。
 
-#![allow(dead_code)] // Tauriのコマンドから使われるまでの暫定(実装ステップ⑤)
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::error::{AppError, Result};
@@ -25,7 +24,8 @@ pub fn default_base() -> PathBuf {
 }
 
 /// 同名のものが既にあるときの扱い。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ConflictPolicy {
     /// 既存のものを削除して、置き換える。
     Overwrite,

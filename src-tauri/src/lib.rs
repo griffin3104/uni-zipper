@@ -1,3 +1,4 @@
+mod commands;
 mod encoding;
 mod error;
 mod exclude;
@@ -9,9 +10,27 @@ mod workdir;
 mod zip_reader;
 mod zip_writer;
 
+use commands::AppState;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            use tauri::Manager;
+            // ワークフォルダを作り、前回の異常終了で残ったものを掃除する。
+            app.manage(AppState::new(&workdir::default_base())?);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::classify_drop,
+            commands::add_items,
+            commands::list_items,
+            commands::remove_item,
+            commands::clear_items,
+            commands::compress,
+            commands::extract,
+            commands::cancel,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

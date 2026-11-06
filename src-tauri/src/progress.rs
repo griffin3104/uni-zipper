@@ -1,6 +1,5 @@
 //! 進捗通知とキャンセル(docs/技術設計.md 5.6)。
 
-#![allow(dead_code)] // 各コマンドから使われるまでの暫定(実装ステップ⑤)
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

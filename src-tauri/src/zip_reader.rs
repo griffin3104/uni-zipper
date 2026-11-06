@@ -3,7 +3,6 @@
 //! 流れ: [`inspect`] でドロップ時に中身を調べる(暗号化の有無・文字コードの判定)→
 //! [`extract`] で、Zipと同じ場所に自動のフォルダを作って展開する。
 
-#![allow(dead_code)] // Tauriのコマンドから使われるまでの暫定(実装ステップ⑤)
 
 use std::collections::HashSet;
 use std::fs::{self, File};

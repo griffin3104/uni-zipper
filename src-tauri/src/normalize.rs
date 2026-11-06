@@ -4,7 +4,6 @@
 //! - 圧縮側: 「Windows」モード用に、名前の書き方を決める(7-Zip方式。波ダッシュ → 全角チルダにしてから、
 //!   Shift_JISに変換できればShift_JIS、できなければ元の名前のままUTF-8)。同名になったときの連番付け。
 
-#![allow(dead_code)] // 解凍・圧縮から使われるまでの暫定(実装ステップ③④)
 
 use std::collections::HashSet;
 
@@ -162,7 +161,8 @@ pub enum NameEncoding {
     Utf8,
 }
 
-/// 「Windows」モードで書き込む名前。
+/// 「Windows」モードで書き込む名前(テスト用: `prepare_windows_name` の結果)。
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedName {
     /// Zipに書くバイト列。
@@ -208,7 +208,9 @@ pub fn encode_windows_name(text: &str) -> (Vec<u8>, NameEncoding) {
     }
 }
 
-/// 名前1つについて、`windows_text` と `encode_windows_name` をまとめて行う(連番付けが要らないとき用)。
+/// 名前1つについて、`windows_text` と `encode_windows_name` をまとめて行う(テスト用)。
+/// 実際の圧縮では、間に連番付け(`dedupe_paths`)が入るので、別々に呼ぶ。
+#[cfg(test)]
 pub fn prepare_windows_name(name: &str) -> EncodedName {
     let (text, replaced) = windows_text(name);
     let (bytes, encoding) = encode_windows_name(&text);

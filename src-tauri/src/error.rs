@@ -2,10 +2,10 @@
 //!
 //! メッセージはそのまま画面のエラーダイアログに表示できる日本語にする。
 
-#![allow(dead_code)] // 各コマンドから使われるまでの暫定(docs/技術設計.md の実装ステップ③以降)
 
 use std::path::PathBuf;
 
+use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 
 #[derive(Debug, thiserror::Error)]
@@ -36,13 +36,57 @@ pub enum AppError {
 
     #[error("キャンセルされました")]
     Cancelled,
+
+    #[error("別の処理を実行中です")]
+    Busy,
+
+    #[error("圧縮するものがありません")]
+    EmptyWorkDir,
+}
+
+impl AppError {
+    /// フロントエンドが、エラーの種類で処理を分けるための識別子。
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Io(_) => "io",
+            Self::SymlinkRejected(_) => "symlinkRejected",
+            Self::InvalidPath(_) => "invalidPath",
+            Self::ItemNotFound(_) => "itemNotFound",
+            Self::InvalidZip(_) => "invalidZip",
+            Self::CharsetNotResolved => "charsetNotResolved",
+            Self::PasswordRequired => "passwordRequired",
+            Self::WrongPassword => "wrongPassword",
+            Self::Cancelled => "cancelled",
+            Self::Busy => "busy",
+            Self::EmptyWorkDir => "emptyWorkDir",
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;
 
-/// Tauriのコマンドからフロントエンドへ返すため、メッセージ文字列としてシリアライズする。
+/// Tauriのコマンドからフロントエンドへ返すため、`{ kind, message }` としてシリアライズする。
+/// `kind` で処理を分け、`message` はそのままダイアログに表示できる。
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
+        let mut s = serializer.serialize_struct("AppError", 2)?;
+        s.serialize_field("kind", self.kind())?;
+        s.serialize_field("message", &self.to_string())?;
+        s.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn エラーはkindとmessageのjsonになる() {
+        let json = serde_json::to_value(AppError::WrongPassword).unwrap();
+        assert_eq!(json, serde_json::json!({ "kind": "wrongPassword", "message": "パスワードが違います" }));
+
+        let json = serde_json::to_value(AppError::SymlinkRejected(PathBuf::from("/a/link"))).unwrap();
+        assert_eq!(json["kind"], "symlinkRejected");
+        assert!(json["message"].as_str().unwrap().contains("/a/link"));
     }
 }

@@ -3,13 +3,12 @@
 //! 対象はUTF-8とShift_JIS(CP932相当)の2つだけ。自動判定ライブラリは使わず、
 //! 「バイト列がそのコードとして正しいか」で判定する。
 
-#![allow(dead_code)] // 解凍・圧縮から使われるまでの暫定(実装ステップ③④)
 
 use encoding_rs::SHIFT_JIS;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// 判定対象の文字コード。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Charset {
     Utf8,

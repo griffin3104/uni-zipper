@@ -4,7 +4,6 @@
 //! 書き込みは、保存先と同じ場所の一時ファイルに行い、最後に保存先へ移す
 //! (キャンセル・エラーで、既存のZipを壊さない)。
 
-#![allow(dead_code)] // Tauriのコマンドから使われるまでの暫定(実装ステップ⑤)
 
 use std::collections::HashSet;
 use std::fs::{self, File, Metadata, OpenOptions};

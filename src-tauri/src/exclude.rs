@@ -3,7 +3,6 @@
 //! 除外対象(docs/機能要件.md 3.4 / 4.3):
 //! `.DS_Store`、`__MACOSX`、`Thumbs.db`、`desktop.ini`
 
-#![allow(dead_code)] // 圧縮・解凍から使われるまでの暫定(実装ステップ③④)
 
 /// 除外する名前。大文字小文字は区別しない(Windowsは区別しないため)。
 const EXCLUDED_NAMES: &[&str] = &[".DS_Store", "__MACOSX", "Thumbs.db", "desktop.ini"];
