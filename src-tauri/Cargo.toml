@@ -25,6 +25,7 @@ walkdir = "2"
 encoding_rs = "0.8"
 unicode-normalization = "0.1"
 zip = "9.3.0"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

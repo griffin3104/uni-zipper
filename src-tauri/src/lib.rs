@@ -7,6 +7,7 @@ mod progress;
 mod test_util;
 mod workdir;
 mod zip_reader;
+mod zip_writer;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

@@ -1,8 +1,8 @@
 //! ファイル名の正規化・無害化(docs/技術設計.md 5.3 / 6.1)。
 //!
 //! - 解凍側: NFC正規化、Zip Slip対策、Windowsで使えない文字・予約名の置き換え。
-//! - 圧縮側: 「Windows」モード用に、Shift_JISへ変換できる名前に直す(波ダッシュ → 全角チルダ、
-//!   変換できない文字 → `_`)。同名になったときの連番付け。
+//! - 圧縮側: 「Windows」モード用に、名前の書き方を決める(7-Zip方式。波ダッシュ → 全角チルダにしてから、
+//!   Shift_JISに変換できればShift_JIS、できなければ元の名前のままUTF-8)。同名になったときの連番付け。
 
 #![allow(dead_code)] // 解凍・圧縮から使われるまでの暫定(実装ステップ③④)
 
@@ -153,48 +153,66 @@ fn is_windows_invalid(c: char) -> bool {
 // 圧縮側
 // ---------------------------------------------------------------------------
 
+/// エントリ名のバイト列の文字コード。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NameEncoding {
+    /// Shift_JIS(UTF-8フラグなしで書く)。
+    ShiftJis,
+    /// UTF-8(UTF-8フラグ付きで書く)。
+    Utf8,
+}
+
 /// 「Windows」モードで書き込む名前。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WindowsName {
-    /// Zipに書くShift_JISのバイト列。
+pub struct EncodedName {
+    /// Zipに書くバイト列。
     pub bytes: Vec<u8>,
-    /// バイト列に対応する文字列(置き換え後)。
+    /// バイト列に対応する文字列(`〜` の置き換え後。`_` への置き換えはしない)。
     pub text: String,
-    /// 波ダッシュの置き換え、または変換できない文字の `_` への置き換えをした。
+    pub encoding: NameEncoding,
+    /// 波ダッシュを全角チルダに置き換えた。
     pub replaced: bool,
 }
 
-/// 名前を、Shift_JISで書ける形にする。
+/// 「Windows」モードの名前の、文字としての準備。戻り値は(名前, 置き換えたか)。
 ///
 /// 1. NFCに正規化する(NFC正規化だけでは「置き換えた」扱いにしない)。
-/// 2. 波ダッシュ `〜`(U+301C)を、全角チルダ `～`(U+FF5E)にする。
-/// 3. それでもShift_JISに変換できない文字(絵文字、ハングル、`¥` など)を `_` にする。
-pub fn prepare_windows_name(name: &str) -> WindowsName {
-    let mut bytes = Vec::new();
-    let mut text = String::new();
+/// 2. 波ダッシュ `〜`(U+301C)を、全角チルダ `～`(U+FF5E)にする(置き換えたら `true`)。
+///
+/// 同名の連番付け(`dedupe_paths`)は、この結果に対して行ってから、`encode_windows_name` で書き方を決める。
+pub fn windows_text(name: &str) -> (String, bool) {
     let mut replaced = false;
-
-    for c in to_nfc(name).chars() {
-        let c = if c == WAVE_DASH {
-            replaced = true;
-            FULLWIDTH_TILDE
-        } else {
-            c
-        };
-        let mut buf = [0u8; 4];
-        match encode_shift_jis_strict(c.encode_utf8(&mut buf)) {
-            Some(encoded) => {
-                bytes.extend(encoded);
-                text.push(c);
-            }
-            None => {
+    let text = to_nfc(name)
+        .chars()
+        .map(|c| {
+            if c == WAVE_DASH {
                 replaced = true;
-                bytes.push(b'_');
-                text.push('_');
+                FULLWIDTH_TILDE
+            } else {
+                c
             }
-        }
+        })
+        .collect();
+    (text, replaced)
+}
+
+/// 名前の書き方を決める。Shift_JISに全文字を変換できればShift_JIS、1文字でも変換できなければ、
+/// 名前はそのままUTF-8で書く(文字を `_` に置き換えない)。
+///
+/// `¥`(U+00A5)と `‾`(U+203E)は変換できない文字として扱うので、含む名前はUTF-8になる
+/// (理由は `encoding::encode_shift_jis_strict`)。
+pub fn encode_windows_name(text: &str) -> (Vec<u8>, NameEncoding) {
+    match encode_shift_jis_strict(text) {
+        Some(bytes) => (bytes, NameEncoding::ShiftJis),
+        None => (text.as_bytes().to_vec(), NameEncoding::Utf8),
     }
-    WindowsName { bytes, text, replaced }
+}
+
+/// 名前1つについて、`windows_text` と `encode_windows_name` をまとめて行う(連番付けが要らないとき用)。
+pub fn prepare_windows_name(name: &str) -> EncodedName {
+    let (text, replaced) = windows_text(name);
+    let (bytes, encoding) = encode_windows_name(&text);
+    EncodedName { bytes, text, encoding, replaced }
 }
 
 /// Zip内のパス一覧で、同じ名前になったものに連番を付ける(`a.txt`、`a_1.txt`、`a_2.txt`)。
@@ -412,37 +430,64 @@ mod tests {
     }
 
     #[test]
-    fn 変換できない文字はアンダースコアにする() {
+    fn 変換できない文字を含む名前は元のままutf8にする() {
         let n = prepare_windows_name("楽しい😀写真.jpg");
-        assert_eq!(n.text, "楽しい_写真.jpg");
-        assert!(n.replaced);
-        // 絵文字は1文字 → `_` 1バイト
-        assert_eq!(n.bytes.iter().filter(|&&b| b == b'_').count(), 1);
+        assert_eq!(n.text, "楽しい😀写真.jpg");
+        assert_eq!(n.bytes, "楽しい😀写真.jpg".as_bytes());
+        assert_eq!(n.encoding, NameEncoding::Utf8);
+        assert!(!n.replaced, "`_` への置き換えはしない");
 
         let k = prepare_windows_name("한글.txt");
-        assert_eq!(k.text, "__.txt");
+        assert_eq!(k.text, "한글.txt");
+        assert_eq!(k.encoding, NameEncoding::Utf8);
     }
 
     #[test]
-    fn 円記号はバックスラッシュに化けずアンダースコアになる() {
+    fn 変換できる名前はshift_jisになる() {
+        let n = prepare_windows_name("日本語.txt");
+        assert_eq!(n.encoding, NameEncoding::ShiftJis);
+        let ascii = prepare_windows_name("abc.txt");
+        assert_eq!(ascii.encoding, NameEncoding::ShiftJis);
+        assert_eq!(ascii.bytes, b"abc.txt");
+    }
+
+    #[test]
+    fn 円記号を含む名前は_utf8になり_バックスラッシュに化けない() {
         let n = prepare_windows_name("a¥b.txt");
-        assert_eq!(n.text, "a_b.txt");
+        assert_eq!(n.text, "a¥b.txt");
+        assert_eq!(n.encoding, NameEncoding::Utf8);
         assert!(!n.bytes.contains(&b'\\'));
-        assert!(n.replaced);
+        // 全角の円記号はShift_JISに変換できる
+        assert_eq!(prepare_windows_name("a￥b.txt").encoding, NameEncoding::ShiftJis);
     }
 
     #[test]
-    fn 半角カナとnec特殊文字とibm拡張はそのまま変換できる() {
+    fn 半角カナとnec特殊文字とibm拡張はそのままshift_jisに変換できる() {
         let n = prepare_windows_name("ｱｲｳ①㈱髙.txt");
         assert_eq!(n.text, "ｱｲｳ①㈱髙.txt");
+        assert_eq!(n.encoding, NameEncoding::ShiftJis);
         assert!(!n.replaced);
     }
 
     #[test]
-    fn 置き換えは変換できる文字を巻き込まない() {
-        let n = prepare_windows_name("日本😀語");
-        assert_eq!(n.text, "日本_語");
-        assert_eq!(n.bytes, [0x93, 0xFA, 0x96, 0x7B, b'_', 0x8C, 0xEA]);
+    fn 波ダッシュを置き換えるとshift_jisで書ける() {
+        // 〜を含むだけなら、全角チルダにして、名前全体がShift_JISになる(絵文字などが無ければ)。
+        let n = prepare_windows_name("第1回〜第3回.txt");
+        assert_eq!(n.encoding, NameEncoding::ShiftJis);
+        assert!(n.replaced);
+        // 〜と絵文字の両方を含む名前は、置き換えた上でUTF-8になる。
+        let m = prepare_windows_name("〜😀.txt");
+        assert_eq!(m.text, "～😀.txt");
+        assert_eq!(m.encoding, NameEncoding::Utf8);
+        assert!(m.replaced);
+    }
+
+    #[test]
+    fn 判断はパス全体で行う() {
+        // 1階層でも変換できない文字があれば、パス全体がUTF-8になる。
+        let n = prepare_windows_name("日本語/😀/ファイル.txt");
+        assert_eq!(n.encoding, NameEncoding::Utf8);
+        assert_eq!(n.bytes, "日本語/😀/ファイル.txt".as_bytes());
     }
 
     // ---- 圧縮: 同名の連番 ----

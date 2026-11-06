@@ -9,7 +9,6 @@ use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{BufReader, Read, Seek, Write};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use zip::HasZipMetadata;
@@ -21,17 +20,11 @@ use crate::encoding::{Charset, Detection, PreviewRow, RawName, decode_name, dete
 use crate::error::{AppError, Result};
 use crate::exclude::is_excluded_path;
 use crate::normalize::{Platform, UnsafeReason, dedupe_paths, sanitize_entry_path};
-use crate::progress::{CancelToken, Progress};
+use crate::progress::{CancelToken, Progress, Tracker};
 use crate::workdir::numbered_name;
 
 /// プレビューに出す名前の最大件数。
 pub const PREVIEW_LIMIT: usize = 5;
-
-/// 進捗通知の最短間隔(テストでは、通知の回数を安定させるため間隔なしにする)。
-#[cfg(not(test))]
-const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
-#[cfg(test)]
-const PROGRESS_INTERVAL: Duration = Duration::ZERO;
 
 /// 展開時の読み書きの単位(キャンセルの確認もこの単位で行う)。
 const CHUNK_SIZE: usize = 64 * 1024;
@@ -109,7 +102,7 @@ struct EntryMeta {
 /// 汎用ビットフラグのビット11(ファイル名がUTF-8)。
 const UTF8_FLAG: u16 = 0x0800;
 
-fn zip_error(e: ZipError) -> AppError {
+pub(crate) fn zip_error(e: ZipError) -> AppError {
     match e {
         ZipError::Io(e) => AppError::Io(e),
         ZipError::InvalidPassword => AppError::WrongPassword,
@@ -392,37 +385,6 @@ impl Drop for OutDirGuard {
         if !self.keep {
             let _ = fs::remove_dir_all(&self.path);
         }
-    }
-}
-
-/// 進捗の集計と通知(間隔を空けて通知する)。
-struct Tracker<'a> {
-    done: u64,
-    total: u64,
-    last_emit: Instant,
-    callback: &'a mut dyn FnMut(Progress),
-}
-
-impl<'a> Tracker<'a> {
-    fn new(total: u64, callback: &'a mut dyn FnMut(Progress)) -> Self {
-        Self { done: 0, total, last_emit: Instant::now(), callback }
-    }
-
-    fn emit(&mut self) {
-        self.last_emit = Instant::now();
-        (self.callback)(Progress { done: self.done, total: self.total });
-    }
-
-    fn add(&mut self, bytes: u64) {
-        self.done += bytes;
-        if self.last_emit.elapsed() >= PROGRESS_INTERVAL {
-            self.emit();
-        }
-    }
-
-    fn finish(&mut self) {
-        self.done = self.total;
-        self.emit();
     }
 }
 
