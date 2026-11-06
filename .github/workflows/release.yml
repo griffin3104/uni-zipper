@@ -1,0 +1,118 @@
+# タグ(例: v0.9.0)をpushすると、macOS(Apple Silicon / Intel)とWindowsのインストーラを作り、
+# GitHubのReleasesに載せる。
+#
+#   git tag v0.9.0
+#   git push origin v0.9.0
+#
+# - インストーラは、Releasesに直接アップロードする。ワークフローのArtifacts(保存期間つきの一時ファイル)は作らない。
+# - タグは `v数字.数字.数字` の形だけ受け付ける(WindowsのMSIが、`-rc1` のような版を受け付けないため)。
+# - 署名はしていない(macOS: Gatekeeperの警告、Windows: SmartScreenの警告が出る)。
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # Releaseの作成とアップロードに必要
+
+jobs:
+  create-release:
+    name: Releaseを作る
+    runs-on: ubuntu-latest
+    steps:
+      - name: タグの形を確認する
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "タグは v0.9.0 のような形にしてください(受け取ったタグ: $GITHUB_REF_NAME)" >&2
+            exit 1
+          fi
+
+      - name: Releaseを作る
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > notes.md <<'NOTES'
+          WindowsとmacOSの間でやり取りするZipの、ファイル名の文字化けを自動で直す、Zipの圧縮・解凍ツールです。
+
+          ## ダウンロード
+
+          | OS | ファイル |
+          |---|---|
+          | Windows | `*-setup.exe`(インストーラ)または `*.msi` |
+          | macOS(Apple Silicon: M1以降) | `*_aarch64.dmg` |
+          | macOS(Intel) | `*_x64.dmg` |
+
+          ## 注意(署名していません)
+
+          - **macOS**: ダウンロードしたアプリを開くと、「開発元を検証できません」などと表示されることがあります。その場合は、アプリを右クリック(control+クリック)して「開く」を選ぶか、ターミナルで `xattr -cr /Applications/uni-zipper.app` を実行してください。
+          - **Windows**: 「WindowsによってPCが保護されました」と表示されることがあります。「詳細情報」→「実行」を選んでください。
+
+          ## 変更内容
+          NOTES
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "uni-zipper $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --generate-notes \
+            --verify-tag
+
+  build:
+    name: ビルド(${{ matrix.name }})
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (Apple Silicon)
+            os: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - name: macOS (Intel)
+            os: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - name: Windows
+            os: windows-latest
+            target: ""
+            args: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - run: npm ci
+
+      # アプリの版を、タグ(v0.9.0 → 0.9.0)に合わせる。インストーラのファイル名と、アプリの版表示に使われる。
+      - name: 版をタグに合わせる
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="$VERSION" node -e "
+            const fs = require('fs');
+            const path = 'src-tauri/tauri.conf.json';
+            const conf = JSON.parse(fs.readFileSync(path, 'utf8'));
+            conf.version = process.env.VERSION;
+            fs.writeFileSync(path, JSON.stringify(conf, null, 2) + '\n');
+          "
+          echo "アプリの版: $VERSION"
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # 作成済みのRelease(タグ名で探す)に、インストーラをアップロードする。
+          tagName: ${{ github.ref_name }}
+          args: ${{ matrix.args }}
+          # Artifacts(保存期間つきの一時ファイル)は作らない。既定でもfalseだが、明示しておく。
+          uploadWorkflowArtifacts: false

@@ -1,0 +1,59 @@
+# mainへのpushとプルリクエストで、macOSとWindowsの両方で、型チェック・Lint・テストを行う。
+# (Windowsの実機が無いので、Windows上での動作確認は、ここで行う。)
+#
+# Artifactsは作らない。キャッシュ(Rustのビルド結果)は、使われないまま7日経つと、GitHubが自動で削除する。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: テスト(${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: フロントエンドの型チェック
+        run: npm run check
+
+      # Rustのビルドには、フロントエンドのビルド結果(dist/)が要る(tauriがコンパイル時に取り込む)。
+      - name: フロントエンドのビルド
+        run: npm run build
+
+      - name: Rustのテスト
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Rustのlint
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings

@@ -60,9 +60,25 @@ cd src-tauri && cargo test   # Rustのテスト
 - `npm run tauri dev`(開発用の実行)は、`.app` ではないので、macOSのシステムダイアログ(保存ダイアログの上書き確認など)が英語で出る。日本語の表示は、`npm run tauri build -- --bundles app` で作る `.app` で確認する。
 - アイコンは、`python3 scripts/make-icon.py` で `assets/icon-1024.png` を作り、`npm run tauri icon assets/icon-1024.png` で各OS用に展開している。
 
+### リリース
+
+タグをpushすると、GitHub Actionsが、macOS(Apple Silicon / Intel)とWindowsのインストーラを作り、Releasesに載せる(`.github/workflows/release.yml`)。
+
+```
+git tag v0.9.0
+git push origin v0.9.0
+```
+
+- タグは `v数字.数字.数字` の形だけ(WindowsのMSIが、`-rc1` のような版を受け付けないため)。
+- アプリの版は、タグから自動で設定される(`tauri.conf.json` の版を、ビルド時に書き換える)。
+- インストーラは、Releasesに直接アップロードする。ワークフォルダのArtifacts(保存期間つきの一時ファイル)は作らない。
+- 署名はしていないので、初回の起動時に、macOSのGatekeeperやWindowsのSmartScreenの警告が出る(対処は、Releaseの説明に書いてある)。
+- `main` へのpushとプルリクエストでは、macOSとWindowsで、型チェック・テスト・Lintを行う(`.github/workflows/ci.yml`)。
+
 ### ディレクトリ構成
 - `src/` フロントエンド(Svelte + TypeScript、ビルドはVite。SvelteKitは使わない)
 - `src-tauri/` バックエンド(Rust)
 - `assets/` / `scripts/` アイコンの元画像と、それを作るスクリプト
+- `.github/workflows/` GitHub Actions(CI、リリース)
 - `docs/` 設計書(機能要件・画面仕様・技術設計)
 - `prototypes/` 技術検証用のプロトタイプ(本体のビルドとは無関係)
