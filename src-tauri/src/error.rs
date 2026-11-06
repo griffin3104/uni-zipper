@@ -21,6 +21,21 @@ pub enum AppError {
 
     #[error("「{0}」が見つかりません")]
     ItemNotFound(String),
+
+    #[error("Zipファイルとして読み込めません: {0}")]
+    InvalidZip(String),
+
+    #[error("ファイル名の文字コードが決まっていません")]
+    CharsetNotResolved,
+
+    #[error("パスワードが必要です")]
+    PasswordRequired,
+
+    #[error("パスワードが違います")]
+    WrongPassword,
+
+    #[error("キャンセルされました")]
+    Cancelled,
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;

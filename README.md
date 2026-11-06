@@ -26,7 +26,7 @@ WindowsとMacOSでZipファイルをやり取りする場合、文字化けを�
 - 保存ボタンで、Zipの保存先とファイル名を指定する(初期位置はデスクトップ)。
 - 圧縮先のOSを「自動」「Windows」から選べる。
   - 自動: UTF-8、NFC正規化。Windows / Mac / Linuxで開ける。
-  - Windows: Shift_JIS(CP932)、NFC正規化。古いWindows標準機能やLhaplus向け。
+  - Windows: Shift_JIS(CP932)優先、NFC正規化。Shift_JISに変換できない名前だけUTF-8フラグ付き(7-Zip方式)。古いWindows標準機能・7-Zip・Lhaplus向け。
 - パスワードを設定できる(ZipCrypto / AES-256)。
 
 ### 解凍
