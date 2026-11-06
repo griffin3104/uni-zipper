@@ -7,10 +7,12 @@ import * as api from "./api";
 import { chooseSavePath, withZipExtension } from "./save";
 import type {
   AppError,
+  Charset,
   ConflictChoice,
   ConflictPolicy,
   EncryptionMethod,
   Item,
+  PreviewRow,
   Progress,
   RenamedEntry,
   SkippedEntry,
@@ -27,6 +29,9 @@ export interface ExtractTarget {
   inspection: ZipInspection;
 }
 
+/** パスワードを間違えてよい回数(この回数、間違えたら中止する)。 */
+const MAX_PASSWORD_ATTEMPTS = 3;
+
 /** 完了ダイアログの内容。 */
 export interface DoneInfo {
   title: string;
@@ -41,6 +46,13 @@ export type Dialog =
   | { kind: "error"; message: string; resolve: () => void }
   | { kind: "confirm"; title: string; message: string; okLabel: string; resolve: (ok: boolean) => void }
   | { kind: "password"; title: string; message: string; resolve: (password: string | null) => void }
+  | {
+      kind: "charset";
+      preview: PreviewRow[];
+      /** どちらで読んでも、正しい文字コードとして読めない(どちらも化けるかもしれない)。 */
+      neitherValid: boolean;
+      resolve: (charset: Charset | null) => void;
+    }
   | ({ kind: "done"; resolve: () => void } & DoneInfo);
 
 class AppModel {
@@ -138,6 +150,21 @@ class AppModel {
         resolve: (password) => {
           this.dialog = null;
           resolve(password);
+        },
+      };
+    });
+  }
+
+  /** ファイル名の文字コードを、読み比べプレビューで選ばせる。キャンセルなら `null`。 */
+  askCharset(preview: PreviewRow[], neitherValid: boolean): Promise<Charset | null> {
+    return new Promise((resolve) => {
+      this.dialog = {
+        kind: "charset",
+        preview,
+        neitherValid,
+        resolve: (charset) => {
+          this.dialog = null;
+          resolve(charset);
         },
       };
     });
@@ -282,6 +309,89 @@ class AppModel {
       // 失敗したら、一覧はそのままで、圧縮モードに戻る(やり直せる)。
       await this.restoreItems();
       await this.showError(error);
+    }
+  }
+
+  // ---- 解凍 ----
+
+  /** 解凍ボタン(画面仕様 3.3)。文字コードの確認 → パスワード入力(3回まで) → 解凍。 */
+  async startExtract() {
+    const target = this.extractTarget;
+    if (this.busy || this.mode !== "extract" || !target) return;
+    this.busy = true;
+    try {
+      // 1. 文字コードの判定が曖昧なときだけ、読み比べプレビューで選ばせる。
+      const { detection, preview } = target.inspection;
+      let charset: Charset | null = null;
+      if (detection.kind === "ambiguous") {
+        charset = await this.askCharset(preview, !detection.utf8Valid && !detection.sjisValid);
+        if (charset === null) return;
+      }
+
+      // 2. パスワードが要るZipは、入力させる。間違えたら再入力(3回まで)。
+      let needsPassword = target.inspection.encrypted;
+      let password: string | null = null;
+      let wrongCount = 0;
+      for (;;) {
+        if (needsPassword) {
+          const message =
+            wrongCount === 0
+              ? "このZipはパスワード付きです。パスワードを入力してください。"
+              : `パスワードが違います。もう一度入力してください(あと${MAX_PASSWORD_ATTEMPTS - wrongCount}回)。`;
+          password = await this.askPassword("パスワードの入力", message);
+          if (password === null) return;
+        }
+
+        // 3. 解凍する。
+        const outcome = await this.runExtract(target, charset, password);
+        if (outcome === "wrongPassword") {
+          wrongCount += 1;
+          if (wrongCount >= MAX_PASSWORD_ATTEMPTS) {
+            await this.showError("パスワードが違います。3回間違えたので、解凍を中止しました。");
+            return;
+          }
+        } else if (outcome === "passwordRequired") {
+          needsPassword = true; // 判定では分からなかったが、パスワードが要るZipだった
+        } else {
+          return;
+        }
+      }
+    } catch (e) {
+      await this.showError(api.toAppError(e));
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** 解凍を1回実行する。パスワードの問題だけは、呼び出し元に返して、再入力させる。 */
+  private async runExtract(
+    target: ExtractTarget,
+    charset: Charset | null,
+    password: string | null,
+  ): Promise<"finished" | "wrongPassword" | "passwordRequired"> {
+    this.startWork("解凍中…");
+    try {
+      const report = await api.extract(target.zipPath, charset, password, (p) => (this.progress = p));
+      this.reset();
+      await this.showDone({
+        title: "解凍が完了しました",
+        message: `展開先: ${report.outDir}`,
+        skipped: report.skipped,
+        renamed: report.renamed,
+      });
+      return "finished";
+    } catch (e) {
+      const error = api.toAppError(e);
+      if (error.kind === "cancelled") {
+        // 中断したら、初期状態に戻る(画面仕様 3.4)。展開先は、Rust側が削除している。
+        this.reset();
+        return "finished";
+      }
+      // 失敗したら、解凍モードに戻る(Zipはそのまま。やり直せる)。
+      this.mode = "extract";
+      if (error.kind === "wrongPassword" || error.kind === "passwordRequired") return error.kind;
+      await this.showError(error);
+      return "finished";
     }
   }
 

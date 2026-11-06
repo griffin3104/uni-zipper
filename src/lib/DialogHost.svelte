@@ -2,6 +2,7 @@
   // 画面に出すダイアログ(同名ファイルの確認、エラー)。`app.dialog` に入ったものを表示する。
   import { app } from "./app.svelte";
   import Button from "./Button.svelte";
+  import CharsetDialog from "./CharsetDialog.svelte";
   import Modal from "./Modal.svelte";
   import PasswordDialog from "./PasswordDialog.svelte";
 
@@ -40,6 +41,9 @@
 {:else if dialog?.kind === "password"}
   {@const d = dialog}
   <PasswordDialog title={d.title} message={d.message} resolve={d.resolve} />
+{:else if dialog?.kind === "charset"}
+  {@const d = dialog}
+  <CharsetDialog preview={d.preview} neitherValid={d.neitherValid} resolve={d.resolve} />
 {:else if dialog?.kind === "done"}
   {@const d = dialog}
   <Modal title={d.title} oncancel={() => d.resolve()}>

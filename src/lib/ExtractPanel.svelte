@@ -14,6 +14,9 @@
       <p class="badge"><Icon name="lock" size={14} /> パスワード付き</p>
     {/if}
     <p class="meta">{target.inspection.entryCount} 件</p>
+    {#if target.inspection.detection.kind === "ambiguous"}
+      <p class="meta">ファイル名の文字コードは、解凍時に確認します</p>
+    {/if}
   </div>
 {/if}
 

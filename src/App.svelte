@@ -74,7 +74,7 @@
         {#if app.mode === "compress"}
           <Button variant="primary" disabled={app.busy} onclick={() => app.startCompress()}>保存…</Button>
         {:else}
-          <Button variant="primary" disabled title="解凍は、次の段階で実装します" onclick={() => {}}>解凍</Button>
+          <Button variant="primary" disabled={app.busy} onclick={() => app.startExtract()}>解凍</Button>
         {/if}
       {/if}
     </footer>

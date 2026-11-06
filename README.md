@@ -33,7 +33,7 @@ WindowsとMacOSでZipファイルをやり取りする場合、文字化けを�
 - 実行中のOSに合わせて、ファイル名を自動変換する。
 - 文字コードの判定が曖昧なときは、Shift_JISとUTF-8の読み比べプレビューで選べる。
 - Zipと同じ場所に、フォルダを自動作成して展開する(同名があれば `_1`、`_2` を付与)。
-- パスワード付きZipに対応する(再入力は3回まで)。
+- パスワード付きZipに対応する(ZipCrypto / AES-256。パスワードの再入力は3回まで)。
 
 詳細は [docs/機能要件.md](docs/機能要件.md) を参照。
 
@@ -54,10 +54,15 @@ npm install          # 依存パッケージの導入
 npm run tauri dev    # 開発起動
 npm run check        # フロントエンドの型チェック
 npm run tauri build  # 配布用ビルド(実行したOS向け)
+cd src-tauri && cargo test   # Rustのテスト
 ```
+
+- `npm run tauri dev`(開発用の実行)は、`.app` ではないので、macOSのシステムダイアログ(保存ダイアログの上書き確認など)が英語で出る。日本語の表示は、`npm run tauri build -- --bundles app` で作る `.app` で確認する。
+- アイコンは、`python3 scripts/make-icon.py` で `assets/icon-1024.png` を作り、`npm run tauri icon assets/icon-1024.png` で各OS用に展開している。
 
 ### ディレクトリ構成
 - `src/` フロントエンド(Svelte + TypeScript、ビルドはVite。SvelteKitは使わない)
 - `src-tauri/` バックエンド(Rust)
+- `assets/` / `scripts/` アイコンの元画像と、それを作るスクリプト
 - `docs/` 設計書(機能要件・画面仕様・技術設計)
 - `prototypes/` 技術検証用のプロトタイプ(本体のビルドとは無関係)
