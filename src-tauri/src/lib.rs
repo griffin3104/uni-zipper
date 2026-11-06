@@ -15,6 +15,7 @@ use commands::AppState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use tauri::Manager;
             // ワークフォルダを作り、前回の異常終了で残ったものを掃除する。
@@ -30,6 +31,7 @@ pub fn run() {
             commands::compress,
             commands::extract,
             commands::cancel,
+            commands::path_exists,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

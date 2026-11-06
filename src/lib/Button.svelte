@@ -6,6 +6,8 @@
     disabled = false,
     title,
     autofocus = false,
+    submit = false,
+    form,
     onclick,
     children,
   }: {
@@ -13,13 +15,16 @@
     disabled?: boolean;
     title?: string;
     autofocus?: boolean;
+    /** `form` で指定したフォームの送信ボタンにする。 */
+    submit?: boolean;
+    form?: string;
     onclick: () => void;
     children: Snippet;
   } = $props();
 </script>
 
 <!-- svelte-ignore a11y_autofocus -->
-<button class={variant} {disabled} {title} {autofocus} {onclick}>
+<button class={variant} type={submit ? "submit" : "button"} {form} {disabled} {title} {autofocus} {onclick}>
   {@render children()}
 </button>
 

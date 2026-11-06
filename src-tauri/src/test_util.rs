@@ -125,6 +125,25 @@ pub fn disable_unicode_path_field(buf: &mut [u8]) {
     }
 }
 
+/// 各エントリの「作成元OS」(version made by の上位バイト。0 = FAT、3 = Unix)の一覧。
+pub fn read_made_by_hosts(buf: &[u8]) -> Vec<u8> {
+    let u16le = |o: usize| u16::from_le_bytes([buf[o], buf[o + 1]]);
+    let u32le = |o: usize| u32::from_le_bytes([buf[o], buf[o + 1], buf[o + 2], buf[o + 3]]);
+    let eocd = (0..=buf.len() - 22)
+        .rev()
+        .find(|&i| u32le(i) == 0x0605_4b50)
+        .expect("EOCDが見つからない");
+    let count = u16le(eocd + 10) as usize;
+    let mut pos = u32le(eocd + 16) as usize;
+    let mut out = Vec::new();
+    for _ in 0..count {
+        out.push((u16le(pos + 4) >> 8) as u8);
+        let n = u16le(pos + 28) as usize + u16le(pos + 30) as usize + u16le(pos + 32) as usize;
+        pos += 46 + n;
+    }
+    out
+}
+
 /// セントラルディレクトリを直接読んで、(汎用ビットフラグ, 名前のバイト列)の一覧を返す。
 /// `zip` クレートの解釈(拡張フィールドによる名前の置き換えなど)を通さず、実際に書かれたバイトを見るために使う。
 pub fn read_central_directory(buf: &[u8]) -> Vec<(u16, Vec<u8>)> {

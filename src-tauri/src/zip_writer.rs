@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 use zip::unstable::write::FileOptionsExt;
 use zip::write::{FileOptions, SimpleFileOptions};
-use zip::{AesMode, CompressionMethod, DateTime, ZipWriter};
+use zip::{AesMode, CompressionMethod, DateTime, System, ZipWriter};
 
 use crate::error::{AppError, Result};
 use crate::exclude::is_excluded_name;
@@ -244,7 +244,7 @@ pub fn compress(
         if options.cancel.is_cancelled() {
             return Err(AppError::Cancelled);
         }
-        let opts = entry_options(&p.src, encryption).map_err(zip_error)?.name(&p.bytes);
+        let opts = entry_options(&p.src, options.target, encryption).map_err(zip_error)?.name(&p.bytes);
 
         if p.src.is_dir {
             writer.start_file_with_options(opts).map_err(zip_error)?;
@@ -294,8 +294,14 @@ pub fn compress(
 
 /// 1エントリの書き込みオプション(圧縮方法・更新日時・権限・暗号化・Zip64)。
 /// 暗号化はファイルだけにかける(フォルダのエントリは中身が無いので、かけない)。
+///
+/// 「Windows」モードでは、作成元OS(version made by)を、7-Zipと同じ**FAT(MS-DOS)**にする。
+/// 7-ZipなどのWindowsのツールは、作成元がUnixのエントリの、UTF-8フラグなしの名前を、
+/// UTF-8として読もうとする(Unixのツールは、UTF-8で書くのが普通なため)。
+/// Shift_JISの名前が、これで文字化けしてしまうので、FATにして、OSの文字コード(日本語ならShift_JIS)で読ませる。
 fn entry_options<'k>(
     src: &SrcEntry,
+    target: TargetOs,
     encryption: Option<(EncryptionMethod, &'k str)>,
 ) -> zip::result::ZipResult<FileOptions<'k, 'static, ()>> {
     let mut opts: FileOptions<'k, 'static, ()> = SimpleFileOptions::default()
@@ -304,10 +310,16 @@ fn entry_options<'k>(
     if let Some(time) = src.meta.modified().ok().and_then(zip_time) {
         opts = opts.last_modified_time(time);
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        opts = opts.unix_permissions(src.meta.permissions().mode() & 0o777);
+    match target {
+        // FATには、Unixの権限が無い。ファイル属性(フォルダ属性など)だけを書く。
+        TargetOs::Windows => opts = opts.system(System::Dos),
+        TargetOs::Auto => {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                opts = opts.unix_permissions(src.meta.permissions().mode() & 0o777);
+            }
+        }
     }
     if !src.is_dir {
         opts = match encryption {
@@ -531,7 +543,7 @@ mod tests {
     use super::*;
     use crate::encoding::{Charset, Detection};
     use crate::normalize::Platform;
-    use crate::test_util::read_central_directory;
+    use crate::test_util::{read_central_directory, read_made_by_hosts};
     use crate::zip_reader::{ExtractOptions, ExtractReport, extract, inspect};
     use std::io::Cursor;
     use tempfile::TempDir;
@@ -634,6 +646,23 @@ mod tests {
                 ("議事録/第1回.txt".to_string(), "b".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn windowsモードの作成元osはfat_自動はunix() {
+        // 7-Zipは、作成元がUnixのエントリの、フラグなしの名前をUTF-8として読む。
+        // Shift_JISの名前が化けないよう、「Windows」では7-Zipと同じFAT(0)にする。
+        let src = make_src(&[("日本語.txt", "1"), ("dir/", ""), ("dir/a.txt", "2")]);
+        let out = TempDir::new().unwrap();
+        let (win, _) = run(&src, &out, TargetOs::Windows, None);
+        assert_eq!(read_made_by_hosts(&fs::read(&win).unwrap()), [0, 0, 0]);
+        let (auto, _) = run(&src, &out, TargetOs::Auto, None);
+        assert_eq!(read_made_by_hosts(&fs::read(&auto).unwrap()), [3, 3, 3]);
+        // FATでも、読み戻せる(フォルダも、ファイルも)
+        let extracted = unzip(&win, None);
+        assert!(extracted.out_dir.join("日本語.txt").is_file());
+        assert!(extracted.out_dir.join("dir").is_dir());
+        assert!(extracted.out_dir.join("dir/a.txt").is_file());
     }
 
     #[test]
@@ -915,6 +944,22 @@ mod tests {
             ("windows.zip", TargetOs::Windows, None),
             ("windows_zipcrypto.zip", TargetOs::Windows, Some((EncryptionMethod::ZipCrypto, "pw"))),
             ("auto_aes.zip", TargetOs::Auto, Some((EncryptionMethod::Aes256, "pw"))),
+            ("auto_zipcrypto.zip", TargetOs::Auto, Some((EncryptionMethod::ZipCrypto, "pw"))),
+        ] {
+            compress(src.path(), &dir.join(name), &opts(target, enc, &cancel), &mut |_| {}).unwrap();
+        }
+    }
+
+    /// 診断用: ASCII名だけのサンプル(`UNI_ZIPPER_SAMPLE_DIR`)。
+    #[test]
+    #[ignore]
+    fn write_samples_ascii() {
+        let dir = PathBuf::from(std::env::var("UNI_ZIPPER_SAMPLE_DIR").expect("UNI_ZIPPER_SAMPLE_DIR"));
+        let src = make_src(&[("a.txt", "hello world hello world"), ("b.txt", "second file")]);
+        let cancel = CancelToken::new();
+        for (name, target, enc) in [
+            ("ascii_plain.zip", TargetOs::Auto, None),
+            ("ascii_zipcrypto.zip", TargetOs::Auto, Some((EncryptionMethod::ZipCrypto, "pw"))),
         ] {
             compress(src.path(), &dir.join(name), &opts(target, enc, &cancel), &mut |_| {}).unwrap();
         }

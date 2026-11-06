@@ -3,10 +3,12 @@
   import { onMount } from "svelte";
   import { app } from "./lib/app.svelte";
   import Button from "./lib/Button.svelte";
+  import CompressOptions from "./lib/CompressOptions.svelte";
   import DialogHost from "./lib/DialogHost.svelte";
   import DropArea from "./lib/DropArea.svelte";
   import ExtractPanel from "./lib/ExtractPanel.svelte";
   import ItemList from "./lib/ItemList.svelte";
+  import ProgressView from "./lib/ProgressView.svelte";
 
   onMount(() => {
     app.init();
@@ -48,18 +50,32 @@
     <section class="content">
       {#if app.mode === "compress"}
         <ItemList />
-        <p class="hint">ここにドロップして、さらに追加できます</p>
+        <CompressOptions />
+        <p class="hint">
+          {#if app.method === "aes256" && app.password !== ""}
+            AES-256は、macOS標準では開けません(Keka、7-Zipなどが必要です)
+          {:else}
+            ここにドロップして、さらに追加できます
+          {/if}
+        </p>
+      {:else if app.mode === "working"}
+        <ProgressView />
       {:else}
         <ExtractPanel />
       {/if}
     </section>
     <footer>
-      <Button disabled={app.busy} onclick={() => app.clear()}>クリア</Button>
-      <span class="spacer"></span>
-      {#if app.mode === "compress"}
-        <Button variant="primary" disabled title="圧縮は、次の段階で実装します" onclick={() => {}}>保存…</Button>
+      {#if app.mode === "working"}
+        <span class="spacer"></span>
+        <Button onclick={() => app.cancelWork()}>キャンセル</Button>
       {:else}
-        <Button variant="primary" disabled title="解凍は、次の段階で実装します" onclick={() => {}}>解凍</Button>
+        <Button disabled={app.busy} onclick={() => app.clear()}>クリア</Button>
+        <span class="spacer"></span>
+        {#if app.mode === "compress"}
+          <Button variant="primary" disabled={app.busy} onclick={() => app.startCompress()}>保存…</Button>
+        {:else}
+          <Button variant="primary" disabled title="解凍は、次の段階で実装します" onclick={() => {}}>解凍</Button>
+        {/if}
       {/if}
     </footer>
   {/if}

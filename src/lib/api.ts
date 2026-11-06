@@ -63,6 +63,11 @@ export function cancel(): Promise<void> {
   return invoke("cancel");
 }
 
+/** そのパスに、ファイルまたはフォルダがあるか。 */
+export function pathExists(path: string): Promise<boolean> {
+  return invoke("path_exists", { path });
+}
+
 /** コマンドの失敗(`{ kind, message }`)を `AppError` にそろえる。想定外の値は `io` 扱いにする。 */
 export function toAppError(e: unknown): AppError {
   if (typeof e === "object" && e !== null && "kind" in e && "message" in e) {
