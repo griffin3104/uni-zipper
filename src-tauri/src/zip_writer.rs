@@ -313,11 +313,19 @@ fn entry_options<'k>(
     match target {
         // FATには、Unixの権限が無い。ファイル属性(フォルダ属性など)だけを書く。
         TargetOs::Windows => opts = opts.system(System::Dos),
+        // 作成元OSは、どのOSで圧縮しても同じになるよう、Unixに固定する(`zip` クレートの既定は、
+        // 動いているOS: Windowsだと、FATになる)。Windows 11標準のZipも、Unix + UTF-8フラグ。
         TargetOs::Auto => {
+            opts = opts.system(System::Unix);
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 opts = opts.unix_permissions(src.meta.permissions().mode() & 0o777);
+            }
+            // Windowsには、Unixの権限が無いので、ふつうの値を書く(フォルダが「ファイル」の権限にならないように)。
+            #[cfg(not(unix))]
+            {
+                opts = opts.unix_permissions(if src.is_dir { 0o755 } else { 0o644 });
             }
         }
     }
