@@ -41,6 +41,9 @@ WindowsとMacOSでZipファイルをやり取りする場合、文字化けを�
 ## 使用技術
 Tauriを使用して作成。
 
+## ライセンス
+[MIT License](LICENSE)
+
 ## 開発
 
 ### 必要なもの

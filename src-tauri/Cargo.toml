@@ -3,6 +3,7 @@ name = "uni-zipper"
 version = "0.1.0"
 description = "WindowsとmacOSのZipファイル名の文字化けを自動で直す、Zip圧縮・解凍ツール"
 edition = "2024"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
