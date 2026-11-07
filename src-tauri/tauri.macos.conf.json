@@ -1,0 +1,16 @@
+{
+  "bundle": {
+    "macOS": {
+      "signingIdentity": "-"
+    },
+    "fileAssociations": [
+      {
+        "ext": ["zip"],
+        "name": "Zip archive",
+        "role": "Viewer",
+        "rank": "Alternate",
+        "contentTypes": ["public.zip-archive"]
+      }
+    ]
+  }
+}

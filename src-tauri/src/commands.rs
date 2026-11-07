@@ -40,6 +40,8 @@ struct Inner {
     workdir: WorkDir,
     busy: AtomicBool,
     cancel: Mutex<Option<CancelToken>>,
+    /// 「プログラムから開く」で渡されたが、画面がまだ受け取っていないファイル。
+    pending_open: Mutex<Vec<PathBuf>>,
 }
 
 /// 処理中の間だけ保持する。破棄すると、「処理中」が解除される。
@@ -64,8 +66,25 @@ impl AppState {
                 workdir,
                 busy: AtomicBool::new(false),
                 cancel: Mutex::new(None),
+                pending_open: Mutex::new(Vec::new()),
             }),
         })
+    }
+
+    /// 「プログラムから開く」で渡されたファイルを、画面が受け取るまで預かる。
+    ///
+    /// 起動直後は、画面(WebView)がまだ準備できていないことがあるので、イベントで直接渡さずに、
+    /// ここに預かる。画面は、起動時と、「開く要求が来た」という通知のたびに、`take_pending_open` で受け取る。
+    pub fn push_open_paths(&self, paths: Vec<PathBuf>) {
+        self.inner.pending_open.lock().unwrap().extend(paths);
+    }
+
+    /// 預かっているファイルを、すべて渡す(渡したら空になる)。
+    pub fn take_pending_open(&self) -> Vec<String> {
+        std::mem::take(&mut *self.inner.pending_open.lock().unwrap())
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect()
     }
 
     /// 処理を始める。すでに処理中なら `Busy`。戻り値のキャンセルフラグは、`cancel` で立てられる。
@@ -341,6 +360,12 @@ pub async fn extract(
 #[tauri::command]
 pub fn cancel(state: State<'_, AppState>) {
     state.cancel();
+}
+
+/// 「プログラムから開く」で渡されて、まだ画面が受け取っていないファイルを、すべて受け取る。
+#[tauri::command]
+pub fn take_pending_open(state: State<'_, AppState>) -> Vec<String> {
+    state.take_pending_open()
 }
 
 /// そのパスに、ファイルまたはフォルダがあるか。保存先の上書き確認(OSの保存ダイアログを通らない場合)に使う。
@@ -658,6 +683,18 @@ mod tests {
         let other = AppState::new(base.path()).unwrap();
         assert!(state.inner.workdir.path().is_dir());
         assert!(other.inner.workdir.path().is_dir());
+    }
+
+    // ---- 「プログラムから開く」 ----
+
+    #[test]
+    fn 開く要求は預かって_受け取ると空になる() {
+        let (state, _b, _src) = setup();
+        assert!(state.take_pending_open().is_empty());
+        state.push_open_paths(vec![PathBuf::from("/a/一つ目.zip")]);
+        state.push_open_paths(vec![PathBuf::from("/b/二つ目.zip"), PathBuf::from("/c/三つ目.zip")]);
+        assert_eq!(state.take_pending_open(), ["/a/一つ目.zip", "/b/二つ目.zip", "/c/三つ目.zip"]);
+        assert!(state.take_pending_open().is_empty());
     }
 
     // ---- フロントエンドとの型 ----

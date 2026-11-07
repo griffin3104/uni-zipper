@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { listen } from "@tauri-apps/api/event";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { onMount } from "svelte";
   import { app } from "./lib/app.svelte";
@@ -11,11 +12,24 @@
   import ProgressView from "./lib/ProgressView.svelte";
 
   onMount(() => {
-    app.init();
-
-    // ファイルのドロップは、HTML5のイベントでは実際のパスが取れないので、Tauriのイベントで受け取る。
     let disposed = false;
     let unlisten: (() => void) | undefined;
+
+    // 起動時に、「プログラムから開く」で渡されたファイルがあれば、それを受け取る(一覧の取り込みのあとで)。
+    app.init().then(() => app.handleOpenRequests());
+
+    // 起動中に、「プログラムから開く」が来たとき(macOS)。
+    let unlistenOpen: (() => void) | undefined;
+    listen("open-paths", () => app.handleOpenRequests())
+      .then((fn) => {
+        if (disposed) fn();
+        else unlistenOpen = fn;
+      })
+      .catch(() => {
+        // Tauriの外(ブラウザだけで開いたとき)では、受け取れない
+      });
+
+    // ファイルのドロップは、HTML5のイベントでは実際のパスが取れないので、Tauriのイベントで受け取る。
     getCurrentWebview()
       .onDragDropEvent((event) => {
         const payload = event.payload;
@@ -39,6 +53,7 @@
     return () => {
       disposed = true;
       unlisten?.();
+      unlistenOpen?.();
     };
   });
 </script>

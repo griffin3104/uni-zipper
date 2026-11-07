@@ -39,7 +39,8 @@
         "languages": [
           "Japanese"
         ],
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerHooks": "./windows/hooks.nsh"
       },
       "wix": {
         "language": "ja-JP"

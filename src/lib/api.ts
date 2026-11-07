@@ -63,6 +63,11 @@ export function cancel(): Promise<void> {
   return invoke("cancel");
 }
 
+/** 「プログラムから開く」で渡されて、まだ受け取っていないファイルのパスを、すべて受け取る。 */
+export function takePendingOpen(): Promise<string[]> {
+  return invoke("take_pending_open");
+}
+
 /** そのパスに、ファイルまたはフォルダがあるか。 */
 export function pathExists(path: string): Promise<boolean> {
   return invoke("path_exists", { path });

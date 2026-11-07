@@ -216,6 +216,35 @@ class AppModel {
     }
   }
 
+  /**
+   * 「プログラムから開く」(Finder / エクスプローラー)で渡されたファイルを受け取って、
+   * ドラッグ&ドロップされたときと同じように扱う。
+   *
+   * 起動時と、起動中に「開く要求が来た」通知を受けたときに呼ぶ。
+   * ドロップと違って、ユーザには「受け付けられなかった」理由が見えないので、断るときは理由を表示する。
+   */
+  async handleOpenRequests() {
+    let paths: string[];
+    try {
+      paths = await api.takePendingOpen();
+    } catch {
+      return;
+    }
+    if (paths.length === 0) return;
+
+    // ダイアログを開いている最中は、そのやり取りを壊さないよう、何もしない(開いたものは受け付けない)。
+    if (this.dialog !== null) return;
+    if (this.busy || this.mode === "working") {
+      await this.showError("処理中のため、開けませんでした。終わってから、もう一度開いてください。");
+      return;
+    }
+    if (this.mode === "extract") {
+      await this.showError("解凍待ちのZipがあるため、開けませんでした。「クリア」してから、もう一度開いてください。");
+      return;
+    }
+    await this.handleDrop(paths);
+  }
+
   // ---- 一覧の操作 ----
 
   /** 1件削除する。空になったら初期状態に戻る。 */
